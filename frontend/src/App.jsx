@@ -5,7 +5,8 @@ import {
   Cpu, Eye, Code, Layout, MessageSquare, History, Rocket,
   FolderTree, GitBranch, Download, Upload, Zap, Terminal,
   RefreshCw, CheckCircle, AlertCircle, ChevronRight, ChevronDown,
-  Boxes, Package, Globe, Moon, Sun
+  Boxes, Package, Globe, Moon, Sun,
+  Wand2 // <-- ADICIONADO
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -60,6 +61,7 @@ function App() {
   const [prompt, setPrompt] = useState('');
   const [chatHistory, setChatHistory] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [modificationTarget, setModificationTarget] = useState(null); // <-- ADICIONADO
   
   // Estados de arquivos
   const [projectFiles, setProjectFiles] = useState([]);
@@ -150,7 +152,8 @@ Projeto atual:
 
       const res = await axios.post(`${API_BASE}/generate`, { 
         prompt: finalPrompt,
-        context 
+        context,
+        fileToModify: modificationTarget // <-- ADICIONADO
       });
       
       if (res.data.files && res.data.files.length > 0) {
@@ -190,6 +193,7 @@ Projeto atual:
     } finally {
       setLoading(false);
       setPrompt('');
+      setModificationTarget(null); // <-- ADICIONADO
     }
   };
 
@@ -227,6 +231,20 @@ Projeto atual:
     handleGenerate(template.prompt);
   };
 
+  const handleEditorChange = (value) => {
+  if (!selectedFile) return;
+
+  setSelectedFile(prev => ({ ...prev, content: value }));
+
+  setGeneratedFiles(prevFiles => 
+    prevFiles.map(file => 
+      file.path === selectedFile.path 
+        ? { ...file, content: value } 
+        : file
+    )
+  );
+};
+
   const toggleFolder = (folder) => {
     setExpandedFolders(prev => {
       const next = new Set(prev);
@@ -256,19 +274,30 @@ Projeto atual:
               </button>
               {expandedFolders.has(folder) && (
                 <div className="ml-6 space-y-1">
+                  {/* */}
                   {files.map(file => (
-                    <button
-                      key={file}
-                      onClick={async () => {
-                        const res = await axios.get(`${API_BASE}/file/${file}`);
-                        setSelectedFile({ path: file, content: res.data.content });
-                      }}
-                      className="flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-slate-700 rounded-lg transition-colors text-slate-400"
-                    >
-                      <FileCode className="w-3 h-3" />
-                      <span className="truncate">{file.split('/').pop()}</span>
-                    </button>
+                    <div key={file} className="flex items-center gap-1 group">
+                      <button
+                        onClick={async () => {
+                          const res = await axios.get(`${API_BASE}/file/${file}`);
+                          setSelectedFile({ path: file, content: res.data.content });
+                          if (view === 'chat') setView('split'); // Mova para split view
+                        }}
+                        className="flex-1 flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-slate-700 rounded-lg transition-colors text-slate-400 truncate"
+                      >
+                        <FileCode className="w-3 h-3 flex-shrink-0" />
+                        <span className="truncate">{file.split('/').pop()}</span>
+                      </button>
+                      <button
+                        onClick={() => setModificationTarget(file)}
+                        className="p-1.5 text-slate-500 rounded-lg hover:bg-blue-600 hover:text-white opacity-0 group-hover:opacity-100 transition-all"
+                        title={`Modificar ${file.split('/').pop()}`}
+                      >
+                        <Wand2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   ))}
+                  {/* */}
                 </div>
               )}
             </div>
@@ -397,6 +426,24 @@ Projeto atual:
 
       {/* Input */}
       <div className="border-t border-slate-700 p-4 bg-slate-800/50 backdrop-blur">
+        
+        {/* */}
+        {modificationTarget && (
+          <div className="mb-2 px-3 py-2 bg-slate-700 rounded-lg flex items-center justify-between text-sm">
+            <div className="flex items-center gap-2">
+              <Wand2 className="w-4 h-4 text-blue-400" />
+              <span>Modificando: <span className="font-medium text-white">{modificationTarget}</span></span>
+            </div>
+            <button
+              onClick={() => setModificationTarget(null)}
+              className="text-xs text-slate-400 hover:text-white"
+            >
+              Cancelar
+            </button>
+          </div>
+        )}
+        {/* */}
+        
         <div className="flex gap-3">
           <textarea
             value={prompt}
@@ -428,7 +475,11 @@ Projeto atual:
     </div>
   );
 
-  const renderEditor = () => (
+const renderEditor = () => {
+
+    const isGeneratedFile = generatedFiles.some(f => f.path === selectedFile?.path);
+
+    return (
     <div className="flex h-full">
       {/* Sidebar */}
       <div className="w-64 border-r border-slate-700 bg-slate-800/50 p-4 overflow-y-auto">
@@ -480,14 +531,23 @@ Projeto atual:
           <h3 className="text-sm font-medium text-slate-300">
             {selectedFile?.path || 'Selecione um arquivo'}
           </h3>
+          {!isGeneratedFile && selectedFile && (
+            <span className="text-xs text-yellow-500">Modo Apenas-Leitura</span>
+          )}
+          {isGeneratedFile && (
+            <span className="text-xs text-green-500">Modo de Edição</span>
+          )}
         </div>
         <div className="flex-1">
           <Editor
             theme="vs-dark"
             language="typescript"
             value={selectedFile?.content || '// Selecione um arquivo para visualizar'}
+
+            onChange={handleEditorChange}
+
             options={{
-              readOnly: true,
+              readOnly: !isGeneratedFile,
               minimap: { enabled: true },
               fontSize: 14,
               lineNumbers: 'on',
@@ -499,6 +559,7 @@ Projeto atual:
       </div>
     </div>
   );
+};
 
   const renderPreview = () => (
     <div className="h-full bg-white">
