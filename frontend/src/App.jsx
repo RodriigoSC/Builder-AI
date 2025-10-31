@@ -78,6 +78,9 @@ function App() {
   const chatEndRef = useRef(null);
   const previewRef = useRef(null);
 
+  const [notification, setNotification] = useState(null);
+
+
   useEffect(() => {
     loadStatus();
     loadHistory();
@@ -124,6 +127,11 @@ function App() {
       else if (file.startsWith('services/')) structure.services.push(file);
       else structure.other.push(file);
     });
+
+    const showNotification = (message, type = 'success') => {
+      setNotification({ message, type });
+      setTimeout(() => setNotification(null), 3000);
+    };
 
     return structure;
   };
@@ -203,6 +211,9 @@ Projeto atual:
     setLoading(true);
     try {
       await axios.post(`${API_BASE}/apply`, { files: generatedFiles });
+
+      showNotification(`✅ ${generatedFiles.length} arquivo(s) aplicado(s)!`, 'success');
+
       
       // Adiciona confirmação ao chat
       const successMessage = {
@@ -219,8 +230,7 @@ Projeto atual:
       // Recarrega preview
       setPreviewKey(prev => prev + 1);
     } catch (error) {
-      console.error('Erro ao aplicar:', error);
-      alert('Erro ao aplicar arquivos: ' + (error.response?.data?.message || error.message));
+      showNotification('❌ Erro ao aplicar arquivos: ' + error.message, 'error');
     } finally {
       setLoading(false);
     }
@@ -234,7 +244,7 @@ Projeto atual:
   const handleEditorChange = (value) => {
   if (!selectedFile) return;
 
-  setSelectedFile(prev => ({ ...prev, content: value }));
+   setSelectedFile(prev => ({ ...prev, content: value }));
 
   setGeneratedFiles(prevFiles => 
     prevFiles.map(file => 
@@ -289,7 +299,10 @@ Projeto atual:
                         <span className="truncate">{file.split('/').pop()}</span>
                       </button>
                       <button
-                        onClick={() => setModificationTarget(file)}
+                        onClick={() => {
+                          setModificationTarget(file);
+                          setView('split'); // Muda para split view automaticamente
+                        }}
                         className="p-1.5 text-slate-500 rounded-lg hover:bg-blue-600 hover:text-white opacity-0 group-hover:opacity-100 transition-all"
                         title={`Modificar ${file.split('/').pop()}`}
                       >
@@ -418,6 +431,14 @@ Projeto atual:
             <div className="bg-slate-800 rounded-lg p-4">
               <p className="text-slate-300">Gerando código...</p>
             </div>
+          </div>
+        )}
+
+        {notification && (
+          <div className={`fixed top-20 right-6 px-6 py-3 rounded-lg shadow-lg z-50 ${
+            notification.type === 'success' ? 'bg-green-600' : 'bg-red-600'
+          } text-white animate-slide-in`}>
+            {notification.message}
           </div>
         )}
         
@@ -673,7 +694,10 @@ const renderEditor = () => {
         )}
       </div>
     </div>
+
+    
   );
+  
 }
 
 export default App;

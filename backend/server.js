@@ -20,42 +20,56 @@ const TEMPLATE_PATH = path.join(__dirname, '../template');
 const TEMPLATE_SRC_RESOLVED_PATH = path.resolve(TEMPLATE_PATH, 'src');
 
 // ========================================
-// FUNÇÃO UTILITÁRIA: PARSER DE JSON ROBUSTO
-// (Movido para uma função reutilizável)
+// LOGGING ESTRUTURADO
+// ========================================
+const log = {
+  info: (msg) => console.log(`ℹ️  [INFO] ${msg}`),
+  success: (msg) => console.log(`✅ [SUCCESS] ${msg}`),
+  warning: (msg) => console.warn(`⚠️  [WARNING] ${msg}`),
+  error: (msg) => console.error(`❌ [ERROR] ${msg}`),
+  debug: (msg) => process.env.NODE_ENV === 'development' && console.log(`🐛 [DEBUG] ${msg}`)
+};
+
+// ========================================
+// PARSER DE JSON ROBUSTO (CORRIGIDO)
 // ========================================
 const parseRobustJSON = (jsonString) => {
-  let cleanJsonString = jsonString;
+  try {
+    let cleanJsonString = jsonString.trim();
+    log.debug('Tentando fazer parse de JSON da IA');
 
-  const markdownMatch = cleanJsonString.match(/```json\s*([\s\S]*?)\s*```/);
-  if (markdownMatch && markdownMatch[1]) {
-    cleanJsonString = markdownMatch[1];
-  } else {
+    // 1. Tenta extrair JSON de markdown
+    const markdownMatch = cleanJsonString.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (markdownMatch?.[1]) {
+      cleanJsonString = markdownMatch[1].trim();
+      log.debug('JSON extraído de bloco markdown');
+    }
+
+    // 2. Encontra o JSON pelas chaves
     const firstBrace = cleanJsonString.indexOf('{');
     const lastBrace = cleanJsonString.lastIndexOf('}');
     
-    if (firstBrace === -1 || lastBrace === -1 || lastBrace < firstBrace) {
-      console.error('❌ JSON Parser: Chaves {} não encontradas.');
-      throw new Error('Resposta da IA não contém JSON válido (chaves não encontradas)');
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      cleanJsonString = cleanJsonString.substring(firstBrace, lastBrace + 1);
+      log.debug('JSON extraído pelas chaves');
     }
-    cleanJsonString = cleanJsonString.substring(firstBrace, lastBrace + 1);
-  }
 
-  if (!cleanJsonString) {
-      throw new Error('Falha ao extrair string JSON da resposta da IA.');
-  }
+    // 3. Remove caracteres inválidos
+    cleanJsonString = cleanJsonString
+      .replace(/[\x00-\x1F\x7F]/g, '') // Caracteres de controle
+      .replace(/,(\s*[}\]])/g, '$1') // Vírgulas extras
+      .trim();
 
-  // Remove caracteres de controlo inválidos
-  cleanJsonString = cleanJsonString.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
-  
-  try {
-    return JSON.parse(cleanJsonString);
+    // 4. Parse
+    const parsed = JSON.parse(cleanJsonString);
+    log.success('JSON parseado com sucesso');
+    return parsed;
   } catch (error) {
-    console.error('❌ JSON Parser: Erro ao fazer parse.', error.message);
-    console.log('String JSON com falha:', cleanJsonString);
-    throw new Error(`Falha no parse do JSON: ${error.message}`);
+    log.error(`Erro no parse JSON: ${error.message}`);
+    log.error(`Primeiros 200 chars: ${jsonString.substring(0, 200)}`);
+    throw new Error(`Falha no parse do JSON: ${error.message}. A IA retornou formato inválido.`);
   }
 };
-
 
 // ========================================
 // SISTEMA DE CONTEXTO INTELIGENTE (ANALISADOR)
@@ -91,7 +105,7 @@ class ProjectAnalyzer {
 
       return analysis;
     } catch (error) {
-      console.error('Erro ao analisar projeto:', error);
+      log.warning(`Erro ao analisar projeto: ${error.message}`);
       return analysis;
     }
   }
@@ -112,7 +126,7 @@ class ProjectAnalyzer {
       }
     } catch (readError) {
       if (readError.code !== 'ENOENT') {
-        console.warn('Aviso ao ler arquivos:', readError.message);
+        log.warning(`Aviso ao ler arquivos: ${readError.message}`);
       }
     }
     return fileList;
@@ -144,66 +158,93 @@ class ProjectAnalyzer {
 }
 
 // ========================================
-// --- NOVO (Fase 4): PROMPT DO PLANEADOR (ARQUITETO) ---
+// CACHE DE ANÁLISE
 // ========================================
-const getPlannerSystemContext = (projectAnalysis, userPrompt) => {
-  return `Você é um Arquiteto de Software AI sênior. Sua tarefa é analisar o prompt do usuário e o estado atual do projeto, e retornar um PLANO JSON detalhado de quais arquivos você precisa criar ou modificar.
+const projectCache = {
+  analysis: null,
+  timestamp: null,
+  ttl: 60000 // 1 minuto
+};
 
-PROJETO ATUAL:
-${projectAnalysis.summary}
-Componentes existentes: ${projectAnalysis.components.join(', ') || 'nenhum'}
-Páginas existentes: ${projectAnalysis.pages.join(', ') || 'nenhum'}
-Serviços existentes: ${projectAnalysis.services.join(', ') || 'nenhum'}
-
-PROMPT DO USUÁRIO:
-"${userPrompt}"
-
-REGRAS:
-1. Analise o prompt. Se for uma tarefa simples que envolve apenas UM ficheiro (ex: "crie um botão"), retorne um plano com apenas esse ficheiro.
-2. Se for uma tarefa complexa (ex: "crie um CRUD", "adicione autenticação"), divida-a em MÚLTIPLOS ficheiros (páginas, componentes, serviços, etc.).
-3. Para CADA ficheiro no plano, defina:
-   - "path": O caminho completo do ficheiro (ex: "pages/ProdutosPage.tsx" ou "components/Botao.tsx").
-   - "action": "create" (para novos ficheiros) ou "modify" (para ficheiros existentes).
-   - "prompt": Um prompt CLARO E DETALHADO para um desenvolvedor júnior (IA) que irá escrever o código APENAS para esse ficheiro.
-4. Se "action" for "modify", certifique-se de que o "path" existe no projeto.
-5. Seja lógico sobre os caminhos (ex: 'components/', 'pages/', 'services/').
-
-FORMATO DE RESPOSTA OBRIGATÓRIO (APENAS JSON):
-Retorne APENAS um JSON válido no seguinte formato:
-{
-  "plan": [
-    {
-      "path": "caminho/do/ficheiro.tsx",
-      "action": "create" | "modify",
-      "prompt": "Instrução específica e detalhada para este ficheiro..."
-    }
-  ],
-  "description": "Descrição amigável do plano para o usuário (ex: 'Planejei criar 2 componentes e 1 página para o seu CRUD.')"
-}
-`;
+const getCachedAnalysis = async () => {
+  const now = Date.now();
+  if (projectCache.analysis && (now - projectCache.timestamp) < projectCache.ttl) {
+    log.debug('Usando análise em cache');
+    return projectCache.analysis;
+  }
+  
+  log.debug('Analisando projeto...');
+  const analyzer = new ProjectAnalyzer(TEMPLATE_PATH);
+  projectCache.analysis = await analyzer.analyzeProject();
+  projectCache.timestamp = now;
+  return projectCache.analysis;
 };
 
 // ========================================
-// PROMPT DO EXECUTOR (DESENVOLVEDOR) (Antigo getEnhancedSystemContext)
+// PROMPT DO PLANEADOR (ARQUITETO) - MELHORADO
+// ========================================
+const getPlannerSystemContext = (projectAnalysis, userPrompt) => {
+  return `Você é um Arquiteto de Software AI sênior. 
+
+**TAREFA**: Analisar o prompt e criar um plano de arquivos a gerar/modificar.
+
+**PROJETO ATUAL**:
+${projectAnalysis.summary}
+Componentes: ${projectAnalysis.components.join(', ') || 'nenhum'}
+Páginas: ${projectAnalysis.pages.join(', ') || 'nenhum'}
+
+**PROMPT DO USUÁRIO**: "${userPrompt}"
+
+**REGRAS CRÍTICAS**:
+1. Se for tarefa SIMPLES (1 arquivo): retorne plano com 1 arquivo
+2. Se for tarefa COMPLEXA: divida em múltiplos arquivos lógicos
+3. Para CADA arquivo defina:
+   - path: Caminho completo (ex: "components/Button.tsx")
+   - action: "create" OU "modify"
+   - prompt: Instrução CLARA para o desenvolvedor
+
+**FORMATO DE RESPOSTA OBRIGATÓRIO**:
+Retorne APENAS JSON válido (sem markdown, sem texto extra):
+
+{
+  "plan": [
+    {
+      "path": "components/ExemploComponente.tsx",
+      "action": "create",
+      "prompt": "Crie um componente React..."
+    }
+  ],
+  "description": "Resumo amigável do plano"
+}
+
+**IMPORTANTE**: 
+- Responda APENAS com o JSON
+- Não adicione texto antes ou depois
+- Não use \`\`\`json ou markdown
+- Garanta que o JSON seja válido`;
+};
+
+// ========================================
+// PROMPT DO EXECUTOR (DESENVOLVEDOR)
 // ========================================
 const getExecutorSystemContext = (projectAnalysis, task) => {
   
-  // --- Lógica de Modificação (Executor) ---
   if (task.action === 'modify') {
     return `Você é um assistente especializado em MODIFICAR código React/TypeScript.
 
-TAREFA ATUAL:
+**TAREFA ATUAL**:
 Modificar o ficheiro: ${task.path}
 Instrução do Arquiteto: "${task.prompt}"
 
-REGRAS PARA MODIFICAÇÃO:
+**REGRAS PARA MODIFICAÇÃO**:
 1. Modifique o código original para atender à instrução.
 2. Retorne o CÓDIGO COMPLETO E ATUALIZADO do ficheiro. Não omita nada.
 3. Mantenha os imports, hooks e lógica existentes que não foram alterados.
 4. Siga os padrões do projeto (TypeScript, Tailwind).
 
-FORMATO DE RESPOSTA (JSON):
-Retorne APENAS um JSON válido no formato:
+**FORMATO DE RESPOSTA (JSON)**:
+Retorne APENAS um JSON válido (sem markdown):
+
 {
   "files": [
     {
@@ -214,21 +255,20 @@ Retorne APENAS um JSON válido no formato:
   "description": "Descrição clara do que foi modificado neste ficheiro"
 }
 
-CÓDIGO ORIGINAL DO ARQUIVO (${task.path}):
+**CÓDIGO ORIGINAL DO ARQUIVO (${task.path})**:
 \`\`\`typescript
 ${task.originalContent}
 \`\`\`
 `;
   }
 
-  // --- Lógica de Criação (Executor) ---
   return `Você é um assistente especializado em gerar código React/TypeScript de alta qualidade.
 
-TAREFA ATUAL:
+**TAREFA ATUAL**:
 Criar o ficheiro: ${task.path}
 Instrução do Arquiteto: "${task.prompt}"
 
-REGRAS PARA GERAÇÃO (NOVOS ARQUIVOS):
+**REGRAS PARA GERAÇÃO (NOVOS ARQUIVOS)**:
 1. Gere o código APENAS para o ficheiro solicitado e com base na instrução.
 2. Use TypeScript com React e Tailwind CSS.
 3. Siga os padrões do projeto: ${projectAnalysis.summary}
@@ -236,8 +276,9 @@ REGRAS PARA GERAÇÃO (NOVOS ARQUIVOS):
 5. O código deve ser funcional, completo e pronto para uso.
 6. Tecnologias disponíveis: ${Array.from(projectAnalysis.technologies).join(', ')}
 
-FORMATO DE RESPOSTA (JSON):
-Retorne APENAS um JSON válido no formato:
+**FORMATO DE RESPOSTA (JSON)**:
+Retorne APENAS um JSON válido (sem markdown):
+
 {
   "files": [
     {
@@ -276,7 +317,7 @@ function getProviderConfig() {
 }
 
 // ========================================
-// --- ATUALIZADO (Fase 4): POST /generate (Orquestrador) ---
+// POST /generate (CORRIGIDO)
 // ========================================
 app.post('/generate', async (req, res) => {
   try {
@@ -286,31 +327,38 @@ app.post('/generate', async (req, res) => {
       return res.status(400).json({ error: 'Prompt é obrigatório' });
     }
 
+    log.info('Nova requisição de geração');
+    log.debug(`Prompt: ${prompt.substring(0, 50)}...`);
+
     // Configuração do Provider
     const originalProvider = process.env.AI_PROVIDER;
     if (customProvider) process.env.AI_PROVIDER = customProvider;
     const { provider, config } = getProviderConfig();
     const aiProvider = createProvider(provider, config);
-    console.log(`📡 Usando provider: ${provider} (${config.model})`);
+    log.info(`Usando provider: ${provider} (${config.model})`);
 
-    // Análise do Projeto
-    const analyzer = new ProjectAnalyzer(TEMPLATE_PATH);
-    const projectAnalysis = await analyzer.analyzeProject();
-    console.log('📊 Análise do projeto:', projectAnalysis.summary);
+    // Análise do Projeto (com cache)
+    const projectAnalysis = await getCachedAnalysis();
+    log.debug(`Projeto: ${projectAnalysis.components.length} componentes`);
 
     let allGeneratedFiles = [];
     let finalDescription = "";
 
-    // --- FLUXO 1: MODIFICAÇÃO SIMPLES (Fase 2) ---
-    // Se o usuário usou a "varinha mágica", é uma modificação simples.
-    // Ignoramos o Planeador para velocidade.
+    // --- FLUXO 1: MODIFICAÇÃO SIMPLES ---
     if (fileToModify) {
-      console.log(`🤖 FLUXO: Modificação Simples de ${fileToModify}`);
+      log.info(`FLUXO: Modificação Simples de ${fileToModify}`);
       
       const fullPath = path.join(TEMPLATE_PATH, 'src', fileToModify);
       const safeResolvedPath = path.resolve(fullPath);
+      
       if (!safeResolvedPath.startsWith(TEMPLATE_SRC_RESOLVED_PATH)) {
+        log.error('Caminho de arquivo inválido');
         return res.status(400).json({ error: 'Caminho de arquivo inválido' });
+      }
+
+      if (!await fs.pathExists(fullPath)) {
+        log.error(`Arquivo ${fileToModify} não encontrado`);
+        return res.status(404).json({ error: `Arquivo ${fileToModify} não encontrado` });
       }
       
       const originalContent = await fs.readFile(fullPath, 'utf8');
@@ -326,36 +374,53 @@ app.post('/generate', async (req, res) => {
       const result = await aiProvider.generate(prompt, systemContext);
       
       const generated = parseRobustJSON(result.content);
+      
+      // VALIDAÇÃO CRÍTICA
+      if (!generated.files || !Array.isArray(generated.files) || generated.files.length === 0) {
+        throw new Error('IA não retornou código modificado');
+      }
+      
       allGeneratedFiles = generated.files;
-      finalDescription = generated.description;
+      finalDescription = generated.description || `Arquivo ${fileToModify} modificado com sucesso`;
+      log.success(`Modificação concluída: ${fileToModify}`);
 
     } else {
-      // --- FLUXO 2: GERAÇÃO "AGENTE" (Fase 4) ---
-      // (Planeador + Executor)
-      console.log(`🤖 FLUXO: Geração "Agente" para: "${prompt}"`);
+      // --- FLUXO 2: GERAÇÃO "AGENTE" ---
+      log.info('FLUXO: Geração Agente (Planeador + Executor)');
 
-      // --- PASSO 1: PLANEADOR (ARQUITETO) ---
-      console.log('... 1. Chamando o Planeador (Arquiteto)');
+      // PASSO 1: PLANEADOR
+      log.info('Etapa 1/2: Chamando Planeador (Arquiteto)');
       const plannerContext = getPlannerSystemContext(projectAnalysis, prompt);
       const plannerResult = await aiProvider.generate(prompt, plannerContext);
       const planResponse = parseRobustJSON(plannerResult.content);
       
-      console.log(`... 2. Plano recebido: ${planResponse.description}`);
+      // VALIDAÇÃO DO PLANO
+      if (!planResponse.plan || !Array.isArray(planResponse.plan)) {
+        throw new Error('Plano inválido recebido do Arquiteto. Esperado: { plan: [...] }');
+      }
+
+      if (planResponse.plan.length === 0) {
+        throw new Error('Arquiteto retornou plano vazio. Tente reformular o prompt.');
+      }
+      
+      log.success(`Plano criado: ${planResponse.plan.length} arquivo(s)`);
+      log.info(planResponse.description);
       finalDescription = planResponse.description;
       allGeneratedFiles = [];
 
-      // --- PASSO 2: EXECUTOR (DESENVOLVEDOR) ---
+      // PASSO 2: EXECUTOR
+      log.info('Etapa 2/2: Executando Plano');
       let step = 1;
       for (const task of planResponse.plan) {
-        console.log(`... 3.${step}: Executando tarefa: ${task.action} ${task.path}`);
+        log.info(`  ${step}/${planResponse.plan.length}: ${task.action} ${task.path}`);
         
-        // Se for modificação, precisamos carregar o conteúdo original
+        // Se for modificação, carrega conteúdo original
         if (task.action === 'modify') {
           const fullPath = path.join(TEMPLATE_PATH, 'src', task.path);
           const safeResolvedPath = path.resolve(fullPath);
           
           if (!safeResolvedPath.startsWith(TEMPLATE_SRC_RESOLVED_PATH) || !await fs.pathExists(fullPath)) {
-            console.warn(`⚠️  Planeador tentou modificar ficheiro inexistente: ${task.path}. Pulando.`);
+            log.warning(`Arquivo inexistente: ${task.path}. Pulando.`);
             continue;
           }
           task.originalContent = await fs.readFile(fullPath, 'utf8');
@@ -365,19 +430,29 @@ app.post('/generate', async (req, res) => {
         const executorResult = await aiProvider.generate(task.prompt, executorContext);
         
         const generated = parseRobustJSON(executorResult.content);
+        
+        // VALIDAÇÃO DO EXECUTOR
+        if (!generated.files || !Array.isArray(generated.files) || generated.files.length === 0) {
+          log.warning(`Executor não retornou arquivos para ${task.path}. Pulando.`);
+          continue;
+        }
+
         allGeneratedFiles.push(...generated.files);
+        log.success(`  ✓ ${task.path}`);
         step++;
       }
-      console.log('... 4. Execução do plano concluída.');
+      log.success('Plano executado com sucesso!');
     }
 
     // Restaura provider
     if (customProvider) process.env.AI_PROVIDER = originalProvider;
 
     // Validação final
-    if (!allGeneratedFiles || !Array.isArray(allGeneratedFiles)) {
-      throw new Error('Resultado final não contém array de files válido');
+    if (!allGeneratedFiles || !Array.isArray(allGeneratedFiles) || allGeneratedFiles.length === 0) {
+      throw new Error('Nenhum arquivo foi gerado. Tente reformular o prompt.');
     }
+
+    log.success(`Geração completa: ${allGeneratedFiles.length} arquivo(s)`);
 
     res.json({
       success: true,
@@ -385,11 +460,11 @@ app.post('/generate', async (req, res) => {
       description: finalDescription,
       provider: provider,
       model: config.model,
-      usage: null // O uso é difícil de agregar, pode ser implementado depois
+      usage: null
     });
 
   } catch (error) {
-    console.error('❌ Erro fatal ao gerar código:', error);
+    log.error(`Erro ao gerar código: ${error.message}`);
     res.status(500).json({
       error: 'Erro ao gerar código',
       message: error.message,
@@ -398,9 +473,8 @@ app.post('/generate', async (req, res) => {
   }
 });
 
-
 // ========================================
-// POST /apply - Aplica arquivos (Fase 1 e 3)
+// POST /apply - Aplica arquivos
 // ========================================
 app.post('/apply', async (req, res) => {
   try {
@@ -409,22 +483,25 @@ app.post('/apply', async (req, res) => {
       return res.status(400).json({ error: 'Files array é obrigatório' });
     }
 
+    log.info(`Aplicando ${files.length} arquivo(s)`);
+
     // GIT (Antes)
     try {
       execSync('git add .', { cwd: TEMPLATE_PATH });
       execSync('git commit -m "AI-BUILDER: Backup antes da geração" --allow-empty', { cwd: TEMPLATE_PATH });
+      log.success('Backup Git criado');
     } catch (gitError) {
-      console.warn('⚠️  GIT: Falha ao criar commit de backup', gitError.message);
+      log.warning(`GIT: Falha ao criar commit de backup: ${gitError.message}`);
     }
 
     const results = [];
     for (const file of files) {
       const fullPath = path.join(TEMPLATE_PATH, 'src', file.path);
       
-      // Segurança (Fase 3)
+      // Segurança
       const safeResolvedPath = path.resolve(fullPath);
       if (!safeResolvedPath.startsWith(TEMPLATE_SRC_RESOLVED_PATH)) {
-        console.warn(`⚠️  SEGURANÇA: Pulando caminho inválido: ${file.path}`);
+        log.warning(`SEGURANÇA: Pulando caminho inválido: ${file.path}`);
         results.push({ path: file.path, status: 'skipped (unsafe)' });
         continue;
       }
@@ -432,20 +509,25 @@ app.post('/apply', async (req, res) => {
       await fs.ensureDir(path.dirname(fullPath));
       await fs.writeFile(fullPath, file.content, 'utf8');
       results.push({ path: file.path, status: 'written', size: file.content.length });
+      log.success(`Escrito: ${file.path}`);
     }
 
     // GIT (Depois)
     try {
       execSync('git add .', { cwd: TEMPLATE_PATH });
       execSync('git commit -m "AI-BUILDER: Alterações aplicadas"', { cwd: TEMPLATE_PATH });
+      log.success('Commit Git criado');
     } catch (gitError) {
-      console.warn('⚠️  GIT: Falha ao criar commit final', gitError.message);
+      log.warning(`GIT: Falha ao criar commit final: ${gitError.message}`);
     }
+
+    // Invalida cache
+    projectCache.analysis = null;
 
     res.json({ success: true, message: 'Arquivos aplicados e versionados com sucesso', results });
 
   } catch (error) {
-    console.error('❌ Erro ao aplicar arquivos:', error);
+    log.error(`Erro ao aplicar arquivos: ${error.message}`);
     res.status(500).json({ error: 'Erro ao aplicar arquivos', message: error.message });
   }
 });
@@ -455,11 +537,10 @@ app.post('/apply', async (req, res) => {
 // ========================================
 app.get('/analyze', async (req, res) => {
   try {
-    const analyzer = new ProjectAnalyzer(TEMPLATE_PATH);
-    const analysis = await analyzer.analyzeProject();
+    const analysis = await getCachedAnalysis();
     res.json({ success: true, ...analysis });
   } catch (error) {
-    console.error('❌ Erro ao analisar projeto:', error);
+    log.error(`Erro ao analisar projeto: ${error.message}`);
     res.status(500).json({ error: 'Erro ao analisar projeto', message: error.message });
   }
 });
@@ -524,13 +605,13 @@ app.get('/status', async (req, res) => {
       aiProvider: { name: provider, model: config.model, configured: !!config.apiKey || !!config.baseUrl }
     });
   } catch (error) {
-    console.error('❌ Erro ao obter status:', error);
+    log.error(`Erro ao obter status: ${error.message}`);
     res.status(500).json({ error: 'Erro ao obter status', message: error.message });
   }
 });
 
 // ========================================
-// GET /file/:path - Retorna arquivo (Fase 3)
+// GET /file/:path - Retorna arquivo
 // ========================================
 app.get('/file/*', async (req, res) => {
   try {
@@ -547,13 +628,13 @@ app.get('/file/*', async (req, res) => {
     const content = await fs.readFile(fullPath, 'utf8');
     res.json({ success: true, path: filePath, content });
   } catch (error) {
-    console.error('❌ Erro ao ler arquivo:', error);
+    log.error(`Erro ao ler arquivo: ${error.message}`);
     res.status(500).json({ error: 'Erro ao ler arquivo', message: error.message });
   }
 });
 
 // ========================================
-// DELETE /file/:path - Deleta arquivo (Fase 3)
+// DELETE /file/:path - Deleta arquivo
 // ========================================
 app.delete('/file/*', async (req, res) => {
   try {
@@ -568,9 +649,11 @@ app.delete('/file/*', async (req, res) => {
       return res.status(404).json({ error: 'Arquivo não encontrado' });
     }
     await fs.remove(fullPath);
+    projectCache.analysis = null; // Invalida cache
+    log.success(`Arquivo deletado: ${filePath}`);
     res.json({ success: true, message: 'Arquivo deletado com sucesso' });
   } catch (error) {
-    console.error('❌ Erro ao deletar arquivo:', error);
+    log.error(`Erro ao deletar arquivo: ${error.message}`);
     res.status(500).json({ error: 'Erro ao deletar arquivo', message: error.message });
   }
 });
