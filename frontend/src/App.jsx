@@ -6,7 +6,7 @@ import {
   FolderTree, GitBranch, Download, Upload, Zap, Terminal,
   RefreshCw, CheckCircle, AlertCircle, ChevronRight, ChevronDown,
   Boxes, Package, Globe, Moon, Sun,
-  Wand2 // <-- ADICIONADO
+  Wand2
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -56,12 +56,12 @@ const QUICK_COMPONENTS = [
 
 function App() {
   // Estados principais
-  const [view, setView] = useState('chat'); // 'chat', 'editor', 'split'
+  const [view, setView] = useState('chat'); // 'chat', 'editor', 'preview'
   const [theme, setTheme] = useState('dark');
   const [prompt, setPrompt] = useState('');
   const [chatHistory, setChatHistory] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [modificationTarget, setModificationTarget] = useState(null); // <-- ADICIONADO
+  const [modificationTarget, setModificationTarget] = useState(null);
   
   // Estados de arquivos
   const [projectFiles, setProjectFiles] = useState([]);
@@ -128,12 +128,12 @@ function App() {
       else structure.other.push(file);
     });
 
-    const showNotification = (message, type = 'success') => {
+    return structure;
+  };
+  
+  const showNotification = (message, type = 'success') => {
       setNotification({ message, type });
       setTimeout(() => setNotification(null), 3000);
-    };
-
-    return structure;
   };
 
   const handleGenerate = async (customPrompt = null) => {
@@ -161,7 +161,7 @@ Projeto atual:
       const res = await axios.post(`${API_BASE}/generate`, { 
         prompt: finalPrompt,
         context,
-        fileToModify: modificationTarget // <-- ADICIONADO
+        fileToModify: modificationTarget
       });
       
       if (res.data.files && res.data.files.length > 0) {
@@ -185,9 +185,9 @@ Projeto atual:
           timestamp: new Date().toISOString()
         });
 
-        // Muda para view split se necessário
+        // Muda para view de editor
         if (view === 'chat') {
-          setView('split');
+          setView('editor');
         }
       }
     } catch (error) {
@@ -201,7 +201,7 @@ Projeto atual:
     } finally {
       setLoading(false);
       setPrompt('');
-      setModificationTarget(null); // <-- ADICIONADO
+      setModificationTarget(null);
     }
   };
 
@@ -284,14 +284,13 @@ Projeto atual:
               </button>
               {expandedFolders.has(folder) && (
                 <div className="ml-6 space-y-1">
-                  {/* */}
                   {files.map(file => (
                     <div key={file} className="flex items-center gap-1 group">
                       <button
                         onClick={async () => {
                           const res = await axios.get(`${API_BASE}/file/${file}`);
                           setSelectedFile({ path: file, content: res.data.content });
-                          if (view === 'chat') setView('split'); // Mova para split view
+                          if (view === 'chat') setView('editor');
                         }}
                         className="flex-1 flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-slate-700 rounded-lg transition-colors text-slate-400 truncate"
                       >
@@ -301,7 +300,7 @@ Projeto atual:
                       <button
                         onClick={() => {
                           setModificationTarget(file);
-                          setView('split'); // Muda para split view automaticamente
+                          setView('chat'); // CORREÇÃO: Leva ao chat para digitar a modificação
                         }}
                         className="p-1.5 text-slate-500 rounded-lg hover:bg-blue-600 hover:text-white opacity-0 group-hover:opacity-100 transition-all"
                         title={`Modificar ${file.split('/').pop()}`}
@@ -310,7 +309,6 @@ Projeto atual:
                       </button>
                     </div>
                   ))}
-                  {/* */}
                 </div>
               )}
             </div>
@@ -448,7 +446,6 @@ Projeto atual:
       {/* Input */}
       <div className="border-t border-slate-700 p-4 bg-slate-800/50 backdrop-blur">
         
-        {/* */}
         {modificationTarget && (
           <div className="mb-2 px-3 py-2 bg-slate-700 rounded-lg flex items-center justify-between text-sm">
             <div className="flex items-center gap-2">
@@ -463,7 +460,6 @@ Projeto atual:
             </button>
           </div>
         )}
-        {/* */}
         
         <div className="flex gap-3">
           <textarea
@@ -588,7 +584,7 @@ const renderEditor = () => {
         <div className="px-4 py-3 border-b border-slate-300 flex items-center justify-between bg-slate-100">
           <h3 className="text-sm font-medium text-slate-700 flex items-center gap-2">
             <Eye className="w-4 h-4" />
-            Preview ao Vivo
+            Preview ao Vivo (http://localhost:5173)
           </h3>
           <button
             onClick={() => setPreviewKey(prev => prev + 1)}
@@ -624,7 +620,7 @@ const renderEditor = () => {
                 </div>
               </div>
 
-              {/* View Switcher */}
+              {/* View Switcher -- ALTERADO */}
               <div className="flex gap-1 bg-slate-900 rounded-lg p-1">
                 <button
                   onClick={() => setView('chat')}
@@ -636,15 +632,6 @@ const renderEditor = () => {
                   Chat
                 </button>
                 <button
-                  onClick={() => setView('split')}
-                  className={`px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors ${
-                    view === 'split' ? 'bg-blue-600' : 'hover:bg-slate-800'
-                  }`}
-                >
-                  <Layout className="w-4 h-4" />
-                  Split
-                </button>
-                <button
                   onClick={() => setView('editor')}
                   className={`px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors ${
                     view === 'editor' ? 'bg-blue-600' : 'hover:bg-slate-800'
@@ -653,8 +640,18 @@ const renderEditor = () => {
                   <Code className="w-4 h-4" />
                   Editor
                 </button>
+                <button
+                  onClick={() => setView('preview')}
+                  className={`px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors ${
+                    view === 'preview' ? 'bg-blue-600' : 'hover:bg-slate-800'
+                  }`}
+                >
+                  <Eye className="w-4 h-4" />
+                  Preview
+                </button>
               </div>
             </div>
+            {/* Fim View Switcher */}
 
             <div className="flex items-center gap-3">
               {status && (
@@ -673,26 +670,15 @@ const renderEditor = () => {
         </div>
       </header>
 
-      {/* Main Content */}
+      {/* Main Content -- ALTERADO */}
       <div className="h-[calc(100vh-73px)]">
         {view === 'chat' && renderChat()}
         
         {view === 'editor' && renderEditor()}
         
-        {view === 'split' && (
-          <div className="grid grid-cols-2 h-full">
-            <div className="border-r border-slate-700">
-              {renderChat()}
-            </div>
-            <div className="grid grid-rows-2">
-              <div className="border-b border-slate-700 overflow-hidden">
-                {renderEditor()}
-              </div>
-              {renderPreview()}
-            </div>
-          </div>
-        )}
+        {view === 'preview' && renderPreview()}
       </div>
+      {/* Fim Main Content */}
     </div>
 
     
