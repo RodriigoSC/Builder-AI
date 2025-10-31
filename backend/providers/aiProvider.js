@@ -81,7 +81,7 @@ class GeminiProvider extends AIProvider {
     const fullPrompt = `${systemContext}\n\n${prompt}`;
     
     const response = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/${this.config.model || 'gemini-pro'}:generateContent?key=${this.config.apiKey}`,
+      `https://generativelanguage.googleapis.com/v1/models/${this.config.model || 'gemini-pro'}:generateContent?key=${this.config.apiKey}`,
       {
         contents: [{
           parts: [{ text: fullPrompt }]

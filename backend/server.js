@@ -281,7 +281,7 @@ ${prompt}
     }
 
     // Extract JSON from response
-    let jsonMatch = result.content.match(/\{[\s\S]*\}/);
+    /*let jsonMatch = result.content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       // Tenta extrair de código markdown
       jsonMatch = result.content.match(/```json\s*([\s\S]*?)\s*```/);
@@ -296,7 +296,41 @@ ${prompt}
       throw new Error('Resposta da IA não contém JSON válido');
     }
 
-    const generated = JSON.parse(jsonMatch[0]);
+    const generated = JSON.parse(jsonMatch[0]);*/
+
+    // ========================================
+    // NOVO Bloco de Extração de JSON (Mais Robusto)
+    // ========================================
+    let jsonString = result.content;
+
+    // 1. Tenta extrair de código markdown primeiro (preferencial)
+    const markdownMatch = jsonString.match(/```json\s*([\s\S]*?)\s*```/);
+    if (markdownMatch && markdownMatch[1]) {
+      jsonString = markdownMatch[1];
+    } else {
+      // 2. Se não for markdown, encontra o primeiro { e o último }
+      // Isso evita pegar texto antes ou depois do JSON
+      const firstBrace = jsonString.indexOf('{');
+      const lastBrace = jsonString.lastIndexOf('}');
+      
+      if (firstBrace === -1 || lastBrace === -1 || lastBrace < firstBrace) {
+        console.error('❌ Resposta da IA não contém JSON válido');
+        console.log('Resposta:', result.content.substring(0, 500));
+        throw new Error('Resposta da IA não contém JSON válido (chaves não encontradas)');
+      }
+      jsonString = jsonString.substring(firstBrace, lastBrace + 1);
+    }
+
+    if (!jsonString) {
+        throw new Error('Falha ao extrair string JSON da resposta da IA.');
+    }
+
+    // 3. Limpa caracteres de controle inválidos (a causa do seu erro)
+    // Remove caracteres (exceto \n, \r, \t) que causam o "Bad control character"
+    const cleanJsonString = jsonString.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+
+    // 4. Tenta o parse
+    const generated = JSON.parse(cleanJsonString);
 
     // Valida e enriquece resposta
     if (!generated.files || !Array.isArray(generated.files)) {
