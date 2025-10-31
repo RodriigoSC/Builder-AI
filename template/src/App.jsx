@@ -21,6 +21,9 @@ function App() {
   // use o loader adequado:
   const pages = loadAIPagesVite(); // ou loadAIPagesCRA();
 
+  // Verifica se uma rota raiz ('/') já foi gerada pela IA
+  const hasRootPage = pages.some(p => p.path === '/');
+
   return (
     <BrowserRouter>
       <Suspense fallback={<Loading />}>
@@ -28,13 +31,16 @@ function App() {
           {pages.map(({ path, component: Component }) => (
             <Route key={path} path={path} element={<Component />} />
           ))}
-          {/* rota padrão (fallback) */}
-          <Route
-            path="/"
-            element={
-              <div style={{padding:20}}>Canvas padrão: crie uma página com a IA para substituir este conteúdo.</div>
-            }
-          />
+
+          {/* Rota padrão (fallback) SÓ SE a IA não criou uma página / */}
+          {!hasRootPage && (
+            <Route
+              path="/"
+              element={
+                <div style={{padding:20}}>Canvas padrão: crie uma página com a IA para substituir este conteúdo. (Ex: "crie uma home page")</div>
+              }
+            />
+          )}
         </Routes>
       </Suspense>
     </BrowserRouter>

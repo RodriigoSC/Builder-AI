@@ -7,14 +7,14 @@ import { lazy } from 'react';
 
 export function loadAIPagesVite() {
   // Ajuste o pattern para jsx/tsx conforme necessário
-  const modules = import.meta.glob('../pages/**/*.jsx', { eager: false });
+  const modules = import.meta.glob('../pages/**/*.{js,jsx,ts,tsx}', { eager: false });
 
   const pages = Object.keys(modules).map((rawPath) => {
     // rawPath exemplo: ../pages/Login.jsx
     const clean = rawPath
       .replace('../pages', '')
-      .replace('/index.jsx', '')
-      .replace('.jsx', '')
+      .replace(/\/index\.(js|jsx|ts|tsx)$/, '') // Remove /index.jsx, /index.tsx, etc.
+      .replace(/\.(js|jsx|ts|tsx)$/, '')     // Remove a extensão .jsx, .tsx, etc.
       .toLowerCase();
 
     const route = clean === '' || clean === '/home' ? '/' : clean;

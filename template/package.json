@@ -9,11 +9,16 @@
     "preview": "vite preview",
     "ai:deps": "node scripts/ai-builder-deps.js",
     "ai:sync": "node scripts/ai-builder-deps.js && npm run dev"
-  },  
+  },
   "dependencies": {
+    "@hookform/resolvers": "^5.2.2",
+    "axios": "^1.13.1",
+    "classnames": "^2.5.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router-dom": "^6.20.1"
+    "react-hook-form": "^7.65.0",
+    "react-router-dom": "^6.20.1",
+    "yup": "^1.7.1"
   },
   "devDependencies": {
     "@types/react": "^18.2.43",
