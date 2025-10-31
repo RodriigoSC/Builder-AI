@@ -204,7 +204,7 @@ Páginas: ${projectAnalysis.pages.join(', ') || 'nenhum'}
    - prompt: Instrução CLARA para o desenvolvedor
 
 **FORMATO DE RESPOSTA OBRIGATÓRIO**:
-Retorne APENAS JSON válido (sem markdown, sem texto extra):
+Retorne APENAS um bloco de JSON válido, formatado como markdown:
 
 {
   "plan": [
@@ -220,7 +220,7 @@ Retorne APENAS JSON válido (sem markdown, sem texto extra):
 **IMPORTANTE**: 
 - Responda APENAS com o JSON
 - Não adicione texto antes ou depois
-- Não use \`\`\`json ou markdown
+- **USE** \`\`\`json e markdown. O JSON DEVE estar dentro de um bloco de código.
 - Garanta que o JSON seja válido`;
 };
 
@@ -243,7 +243,7 @@ Instrução do Arquiteto: "${task.prompt}"
 4. Siga os padrões do projeto (TypeScript, Tailwind).
 
 **FORMATO DE RESPOSTA (JSON)**:
-Retorne APENAS um JSON válido (sem markdown):
+Retorne APENAS um bloco de JSON válido, formatado como markdown:
 
 {
   "files": [
@@ -277,7 +277,7 @@ Instrução do Arquiteto: "${task.prompt}"
 6. Tecnologias disponíveis: ${Array.from(projectAnalysis.technologies).join(', ')}
 
 **FORMATO DE RESPOSTA (JSON)**:
-Retorne APENAS um JSON válido (sem markdown):
+Retorne APENAS um bloco de JSON válido, formatado como markdown:
 
 {
   "files": [
@@ -510,6 +510,16 @@ app.post('/apply', async (req, res) => {
       await fs.writeFile(fullPath, file.content, 'utf8');
       results.push({ path: file.path, status: 'written', size: file.content.length });
       log.success(`Escrito: ${file.path}`);
+    }
+
+    log.info('Executando script de instalação de dependências (ai:deps)...');
+    try {
+      // Executa o script 'npm run ai:deps' que está no package.json do template
+      execSync('npm run ai:deps', { cwd: TEMPLATE_PATH, stdio: 'inherit' });
+      log.success('Dependências instaladas/verificadas com sucesso.');
+    } catch (depError) {
+      log.warning(`Falha ao instalar dependências: ${depError.message}`);
+      // Não quebra a requisição, mas avisa no log
     }
 
     // GIT (Depois)

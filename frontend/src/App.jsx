@@ -3,7 +3,7 @@ import Editor from '@monaco-editor/react';
 import { 
   Sparkles, Play, Save, Trash2, FileCode, Loader2, Settings, 
   Cpu, Eye, Code, Layout, MessageSquare, History, Rocket,
-  FolderTree, GitBranch, Download, Upload, Zap, Terminal,
+  FolderTree, GitBranch, Download, Upload, Zap, Terminal, // Ícone 'Terminal' já está aqui
   RefreshCw, CheckCircle, AlertCircle, ChevronRight, ChevronDown,
   Boxes, Package, Globe, Moon, Sun,
   Wand2
@@ -56,7 +56,7 @@ const QUICK_COMPONENTS = [
 
 function App() {
   // Estados principais
-  const [view, setView] = useState('chat'); // 'chat', 'editor', 'preview'
+  const [view, setView] = useState('chat'); // 'chat', 'editor', 'preview', 'logs'
   const [theme, setTheme] = useState('dark');
   const [prompt, setPrompt] = useState('');
   const [chatHistory, setChatHistory] = useState([]);
@@ -605,6 +605,18 @@ const renderEditor = () => {
     </div>
   );
 
+  // NOVA FUNÇÃO (com placeholder melhorado)
+  const renderLogs = () => {
+    return (
+      <div className="flex flex-col h-full bg-slate-950 text-slate-400 p-4 font-mono text-sm overflow-y-auto">
+        <h2 className="text-lg font-bold text-white mb-4">Logs do Sistema (Em construção)</h2>
+        <div>[<span className="text-blue-400">INFO</span>] {new Date().toLocaleTimeString()} - Painel de controle carregado.</div>
+        <div>[<span className="text-blue-400">INFO</span>] {new Date().toLocaleTimeString()} - Aguardando conexão com o backend...</div>
+        {/* Logs reais viriam aqui */}
+      </div>
+    );
+  };
+
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'bg-slate-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
       {/* Header */}
@@ -649,6 +661,17 @@ const renderEditor = () => {
                   <Eye className="w-4 h-4" />
                   Preview
                 </button>
+                
+                {/* BOTÃO DE LOGS ADICIONADO AQUI */}
+                <button
+                  onClick={() => setView('logs')}
+                  className={`px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors ${
+                    view === 'logs' ? 'bg-blue-600' : 'hover:bg-slate-800'
+                  }`}
+                >
+                  <Terminal className="w-4 h-4" />
+                  Logs
+                </button>
               </div>
             </div>
             {/* Fim View Switcher */}
@@ -670,15 +693,15 @@ const renderEditor = () => {
         </div>
       </header>
 
-      {/* Main Content -- ALTERADO */}
       <div className="h-[calc(100vh-73px)]">
         {view === 'chat' && renderChat()}
         
         {view === 'editor' && renderEditor()}
         
         {view === 'preview' && renderPreview()}
+
+        {view === 'logs' && renderLogs()}
       </div>
-      {/* Fim Main Content */}
     </div>
 
     
