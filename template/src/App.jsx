@@ -1,56 +1,42 @@
-import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
-import { Suspense, lazy } from 'react';
+// src/App.jsx
+import React, { Suspense } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { setupLivePreview } from './ai/ai-builder-preview';
 
-// A IA irá adicionar os imports das páginas aqui
-// Ex: const Home = lazy(() => import('./pages/Home'));
-// Ex: const Dashboard = lazy(() => import('./pages/Dashboard'));
+// Escolha o loader conforme seu bundler:
+// Para Vite:
+import { loadAIPagesVite } from './ai/ai-builder-loader.vite';
+// Para CRA (descomente se usar CRA):
+// import { loadAIPagesCRA } from './ai/ai-builder-loader.cra';
 
+setupLivePreview();
 
-// Componente de Loading para Suspense
 const Loading = () => (
   <div className="flex items-center justify-center min-h-screen">
-    <div className="text-center">
-      <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-4"></div>
-      <p className="text-gray-600">Carregando...</p>
-    </div>
-  </div>
-);
-
-// Componente de Rota Padrão (suas "informações padrão")
-const DefaultHome = () => (
-  <div className="flex items-center justify-center min-h-screen bg-gray-50">
-    <div className="text-center p-8 bg-white shadow-lg rounded-xl">
-      <div className="text-6xl mb-6">🤖</div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-4">
-        AI Builder Canvas
-      </h1>
-      <p className="text-gray-600 max-w-md mx-auto">
-        Seu canvas está pronto. Use o AI Builder para criar uma página (ex: "Crie uma landing page") para substituir este conteúdo.
-      </p>
-    </div>
+    <div>Carregando preview...</div>
   </div>
 );
 
 function App() {
+  // use o loader adequado:
+  const pages = loadAIPagesVite(); // ou loadAIPagesCRA();
+
   return (
     <BrowserRouter>
-      {/* A IA pode adicionar componentes globais (ex: Navbar) aqui */}
-      {/* Ex: <Navbar /> */}
-      
       <Suspense fallback={<Loading />}>
         <Routes>
-          {/* A IA irá adicionar as rotas aqui, substituindo a rota padrão */}
-          {/* Ex: <Route path="/" element={<Home />} /> */}
-          {/* Ex: <Route path="/dashboard" element={<Dashboard />} /> */}
-          
-          {/* Rota padrão inicial */}
-          <Route path="/" element={<DefaultHome />} />
-
+          {pages.map(({ path, component: Component }) => (
+            <Route key={path} path={path} element={<Component />} />
+          ))}
+          {/* rota padrão (fallback) */}
+          <Route
+            path="/"
+            element={
+              <div style={{padding:20}}>Canvas padrão: crie uma página com a IA para substituir este conteúdo.</div>
+            }
+          />
         </Routes>
       </Suspense>
-      
-      {/* A IA pode adicionar componentes globais (ex: Footer) aqui */}
-      {/* Ex: <Footer /> */}
     </BrowserRouter>
   );
 }
